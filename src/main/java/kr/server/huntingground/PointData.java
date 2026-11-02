@@ -13,7 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-final class GroundData {
+final class PointData {
 
     static final String MYTHIC_PREFIX = "mythic:";
 
@@ -42,88 +42,73 @@ final class GroundData {
         }
     }
 
-    record Ground(String id, Map<String, Point> points) {
-    }
-
     private final HuntingGroundPlugin plugin;
     private final File file;
-    private final Map<String, Ground> grounds = new LinkedHashMap<>();
+    private final Map<String, Point> points = new LinkedHashMap<>();
 
-    GroundData(HuntingGroundPlugin plugin) {
+    PointData(HuntingGroundPlugin plugin) {
         this.plugin = plugin;
-        this.file = new File(plugin.getDataFolder(), "grounds.yml");
+        this.file = new File(plugin.getDataFolder(), "points.yml");
     }
 
-    Map<String, Ground> grounds() {
-        return grounds;
+    Map<String, Point> points() {
+        return points;
     }
 
     void load() {
-        grounds.clear();
-        ConfigurationSection root = YamlConfiguration.loadConfiguration(file).getConfigurationSection("grounds");
+        points.clear();
+        ConfigurationSection root = YamlConfiguration.loadConfiguration(file).getConfigurationSection("points");
         if (root == null) {
             return;
         }
-        for (String groundId : root.getKeys(false)) {
-            Ground ground = new Ground(groundId, new LinkedHashMap<>());
-            ConfigurationSection points = root.getConfigurationSection(groundId + ".points");
-            if (points != null) {
-                for (String pointId : points.getKeys(false)) {
-                    Point point = readPoint(groundId, pointId, points.getConfigurationSection(pointId));
-                    if (point != null) {
-                        ground.points().put(pointId, point);
-                    }
-                }
+        for (String id : root.getKeys(false)) {
+            Point point = readPoint(id, root.getConfigurationSection(id));
+            if (point != null) {
+                points.put(id, point);
             }
-            grounds.put(groundId, ground);
         }
     }
 
-    private Point readPoint(String groundId, String pointId, ConfigurationSection section) {
-        String label = groundId + "/" + pointId;
+    private Point readPoint(String id, ConfigurationSection section) {
         if (section == null) {
-            plugin.getLogger().warning("스폰 지점 형식이 잘못되어 건너뜁니다: " + label);
+            plugin.getLogger().warning("리젠 지점 형식이 잘못되어 건너뜁니다: " + id);
             return null;
         }
         String mob = section.getString("mob", "");
         String world = section.getString("world");
         int count = section.getInt("count", 1);
         if (world == null || mob.isBlank() || count < 1) {
-            plugin.getLogger().warning("world, mob, count를 확인하세요. 건너뜁니다: " + label);
+            plugin.getLogger().warning("world, mob, count를 확인하세요. 건너뜁니다: " + id);
             return null;
         }
         if (!mob.startsWith(MYTHIC_PREFIX) && vanillaType(mob) == null) {
-            plugin.getLogger().warning("소환할 수 없는 몹이라 건너뜁니다: " + label + " (" + mob + ")");
+            plugin.getLogger().warning("소환할 수 없는 몹이라 건너뜁니다: " + id + " (" + mob + ")");
             return null;
         }
         RespawnMode mode;
         try {
             mode = RespawnMode.valueOf(section.getString("mode", "EACH").toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            plugin.getLogger().warning("mode는 EACH 또는 GROUP입니다. EACH로 읽습니다: " + label);
+            plugin.getLogger().warning("mode는 EACH 또는 GROUP입니다. EACH로 읽습니다: " + id);
             mode = RespawnMode.EACH;
         }
-        return new Point(pointId, world, section.getDouble("x"), section.getDouble("y"), section.getDouble("z"), mob,
+        return new Point(id, world, section.getDouble("x"), section.getDouble("y"), section.getDouble("z"), mob,
                 count, Math.max(0, section.getDouble("radius", 5)), Math.max(0, section.getInt("respawn", 30)), mode);
     }
 
     void save() throws IOException {
         YamlConfiguration yaml = new YamlConfiguration();
-        for (Ground ground : grounds.values()) {
-            // 지점이 없는 사냥터도 파일에 남도록 빈 섹션을 먼저 만든다.
-            yaml.createSection("grounds." + ground.id() + ".points");
-            for (Point point : ground.points().values()) {
-                String path = "grounds." + ground.id() + ".points." + point.id() + ".";
-                yaml.set(path + "world", point.world());
-                yaml.set(path + "x", point.x());
-                yaml.set(path + "y", point.y());
-                yaml.set(path + "z", point.z());
-                yaml.set(path + "mob", point.mob());
-                yaml.set(path + "count", point.count());
-                yaml.set(path + "radius", point.radius());
-                yaml.set(path + "respawn", point.respawnSeconds());
-                yaml.set(path + "mode", point.mode().name());
-            }
+        for (Point point : points.values()) {
+            String path = "points." + point.id() + ".";
+            yaml.set(path + "world", point.world());
+            yaml.set(path + "x", point.x());
+            yaml.set(path + "y", point.y());
+            yaml.set(path + "z", point.z());
+            yaml.set(path + "mob", point.mob());
+            yaml.set(path + "count", point.count());
+            yaml.set(path + "radius", point.radius());
+            yaml.set(path + "respawn", point.respawnSeconds());
+            yaml.set(path + "mode", point.mode().name());
         }
         yaml.save(file);
     }

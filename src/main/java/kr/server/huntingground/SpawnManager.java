@@ -30,7 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** 스폰 지점마다 몹을 채우고, 사냥터 몹의 드롭템에 주인을 지정한다. */
+/** 리젠 지점마다 몹을 채우고, 그 몹의 드롭템에 주인을 지정한다. */
 final class SpawnManager implements Listener, Runnable {
 
     /** 사망 위치에서 이 거리 안에 생긴 아이템을 그 몹의 드롭템으로 본다. */
@@ -41,16 +41,14 @@ final class SpawnManager implements Listener, Runnable {
     private static final int SPOT_HEIGHT_RANGE = 3;
 
     private static final class PointState {
-        private GroundData.Point point;
-        private final String label;
+        private PointData.Point point;
         private final Set<UUID> alive = new HashSet<>();
         /** 비어 있는 자리마다 리젠할 시각(틱). alive 수와 합치면 항상 마리 수와 같다. */
         private final List<Long> respawnAt = new ArrayList<>();
         private boolean warned;
 
-        private PointState(GroundData.Point point, String label) {
+        private PointState(PointData.Point point) {
             this.point = point;
-            this.label = label;
         }
     }
 
@@ -58,32 +56,26 @@ final class SpawnManager implements Listener, Runnable {
     }
 
     private final HuntingGroundPlugin plugin;
-    private final GroundData data;
+    private final PointData data;
     private final NamespacedKey ownedKey;
     private final Map<String, PointState> states = new HashMap<>();
     private final Set<UUID> tracked = new HashSet<>();
     private final List<RecentKill> recentKills = new ArrayList<>();
 
-    SpawnManager(HuntingGroundPlugin plugin, GroundData data) {
+    SpawnManager(HuntingGroundPlugin plugin, PointData data) {
         this.plugin = plugin;
         this.data = data;
         this.ownedKey = new NamespacedKey(plugin, "owned_drop");
     }
 
-    private static String key(String groundId, String pointId) {
-        return groundId + "/" + pointId;
-    }
-
     /** 설정과 실제 상태를 맞춘다. 바뀌지 않은 지점의 몹은 그대로 둔다. */
     void sync() {
-        Map<String, GroundData.Point> wanted = new HashMap<>();
-        data.grounds().values().forEach(ground -> ground.points().values()
-                .forEach(point -> wanted.put(key(ground.id(), point.id()), point)));
+        Map<String, PointData.Point> wanted = data.points();
 
         Iterator<Map.Entry<String, PointState>> iterator = states.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, PointState> entry = iterator.next();
-            GroundData.Point point = wanted.get(entry.getKey());
+            PointData.Point point = wanted.get(entry.getKey());
             if (point == null) {
                 clear(entry.getValue());
                 iterator.remove();
@@ -92,22 +84,22 @@ final class SpawnManager implements Listener, Runnable {
                 refill(entry.getValue());
             }
         }
-        wanted.forEach((key, point) -> states.computeIfAbsent(key, ignored -> {
-            PointState state = new PointState(point, key);
+        wanted.forEach((id, point) -> states.computeIfAbsent(id, ignored -> {
+            PointState state = new PointState(point);
             refill(state);
             return state;
         }));
     }
 
-    int aliveCount(String groundId, String pointId) {
-        PointState state = states.get(key(groundId, pointId));
+    int aliveCount(String id) {
+        PointState state = states.get(id);
         return state != null ? state.alive.size() : 0;
     }
 
-    /** 사냥터의 몹을 지우고 바로 다시 소환한다. groundId가 null이면 전체가 대상이다. */
-    void reset(String groundId) {
-        states.values().forEach(state -> {
-            if (groundId == null || state.label.startsWith(groundId + "/")) {
+    /** 지점의 몹을 지우고 바로 다시 소환한다. id가 null이면 전체가 대상이다. */
+    void reset(String id) {
+        states.forEach((stateId, state) -> {
+            if (id == null || stateId.equals(id)) {
                 refill(state);
             }
         });
@@ -175,7 +167,7 @@ final class SpawnManager implements Listener, Runnable {
             return;
         }
         long respawnTime = now + state.point.respawnSeconds() * 20L;
-        if (state.point.mode() == GroundData.RespawnMode.EACH) {
+        if (state.point.mode() == PointData.RespawnMode.EACH) {
             for (int i = 0; i < gone; i++) {
                 state.respawnAt.add(respawnTime);
             }
@@ -212,7 +204,7 @@ final class SpawnManager implements Listener, Runnable {
             if (entity == null || !entity.isValid()) {
                 if (!state.warned) {
                     state.warned = true;
-                    plugin.getLogger().warning("몹을 소환하지 못했습니다: " + state.label + " (" + state.point.mob()
+                    plugin.getLogger().warning("몹을 소환하지 못했습니다: " + state.point.id() + " (" + state.point.mob()
                             + "). 몹 이름과 스폰을 막는 플러그인을 확인하세요. 계속 다시 시도합니다.");
                 }
                 return;
@@ -242,13 +234,13 @@ final class SpawnManager implements Listener, Runnable {
         return false;
     }
 
-    private Entity spawn(GroundData.Point point, Location location) {
+    private Entity spawn(PointData.Point point, Location location) {
         if (point.isMythic()) {
             return Bukkit.getPluginManager().isPluginEnabled("MythicMobs")
                     ? MythicHook.spawn(point.mythicName(), location)
                     : null;
         }
-        return location.getWorld().spawnEntity(location, GroundData.vanillaType(point.mob()),
+        return location.getWorld().spawnEntity(location, PointData.vanillaType(point.mob()),
                 CreatureSpawnEvent.SpawnReason.CUSTOM);
     }
 

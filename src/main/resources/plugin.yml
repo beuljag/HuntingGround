@@ -2,14 +2,14 @@ name: HuntingGround
 version: 1.0.0
 main: kr.server.huntingground.HuntingGroundPlugin
 api-version: '1.21'
-description: 지정한 지점에 몹을 리젠하고 드롭템을 잡은 사람에게만 주는 사냥터
+description: 지정한 위치에 몹을 리젠하고 드롭템을 잡은 사람에게만 준다
 softdepend: [MythicMobs]
 commands:
   huntingground:
-    description: 사냥터 관리
+    description: 사냥터 지점 관리
     aliases: [사냥터]
     permission: huntingground.admin
 permissions:
   huntingground.admin:
-    description: 사냥터와 스폰 지점 관리
+    description: 사냥터 지점 관리
     default: op
